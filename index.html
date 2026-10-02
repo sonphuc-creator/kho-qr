@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Quét QR kho thiết bị</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  :root{
+    --ink:#18211c; --muted:#5d6b63; --line:#d5dcd7; --bg:#eef1ee; --card:#ffffff;
+    --in:#0f7a3d; --in-soft:#dff1e6;
+    --out:#e8730c; --out-soft:#fde8cf;
+    --bad:#c62828; --bad-soft:#fbe0e0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Be Vietnam Pro',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+  .wrap{max-width:520px;margin:0 auto;padding:12px 12px 40px}
+  h1{font-size:18px;margin:6px 2px 12px;font-weight:800}
+
+  .modes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mode{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:14px 8px;font:inherit;font-weight:800;font-size:17px;color:var(--muted);cursor:pointer}
+  .mode.out.on{background:var(--out);border-color:var(--out);color:#fff}
+  .mode.in.on{background:var(--in);border-color:var(--in);color:#fff}
+  .mode:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible{outline:3px solid #1b5fd6;outline-offset:2px}
+
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+  select,input[type=text]{width:100%;padding:11px 10px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+  .full{grid-column:1/-1}
+
+  #scanBox{margin-top:12px;background:#000;border-radius:12px;overflow:hidden;min-height:60px;position:relative}
+  #reader{width:100%}
+  .btn{width:100%;margin-top:10px;padding:12px;border:0;border-radius:8px;font:inherit;font-weight:700;font-size:15px;background:var(--ink);color:#fff;cursor:pointer}
+  .btn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+
+  .manual{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}
+  .manual .btn{margin:0;width:auto;padding:0 18px}
+
+  #flash{margin-top:12px;padding:14px;border-radius:10px;border-left:8px solid var(--line);background:var(--card);min-height:70px}
+  #flash b{font-size:17px;display:block}
+  #flash span{color:var(--muted);font-size:14px}
+  #flash.ok-out{background:var(--out-soft);border-color:var(--out)}
+  #flash.ok-in{background:var(--in-soft);border-color:var(--in)}
+  #flash.err{background:var(--bad-soft);border-color:var(--bad)}
+  #flash .warn{color:#8a4b00;font-weight:600;display:block;margin-top:4px}
+
+  .tabs{display:grid;grid-template-columns:1fr 1fr;margin-top:20px;border-bottom:2px solid var(--line)}
+  .tab{padding:10px;text-align:center;font:inherit;font-weight:700;background:none;border:0;color:var(--muted);cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-2px}
+  .tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+
+  .list{margin-top:10px}
+  .item{background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+  .item small{color:var(--muted);display:block}
+  .tag{font-weight:800;font-size:13px;padding:3px 9px;border-radius:99px;white-space:nowrap}
+  .tag.out{background:var(--out-soft);color:#8a4b00}
+  .tag.in{background:var(--in-soft);color:var(--in)}
+  .group{font-weight:800;margin:14px 2px 6px}
+  .empty{color:var(--muted);padding:18px 4px}
+  .count{background:var(--ink);color:#fff;border-radius:99px;padding:1px 8px;font-size:12px;margin-left:6px}
+  .link{background:none;border:0;color:var(--muted);text-decoration:underline;font:inherit;font-size:13px;margin-top:14px;cursor:pointer}
+  @media (prefers-reduced-motion:no-preference){ #flash{transition:background .2s} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Kho thiết bị – quét QR</h1>
+
+  <div class="modes" role="group" aria-label="Chế độ">
+    <button class="mode out on" id="mOut" onclick="setMode('RA')">Ra kho</button>
+    <button class="mode in" id="mIn" onclick="setMode('VAO')">Vào kho</button>
+  </div>
+
+  <div class="row">
+    <div id="roomBox">
+      <label for="room">Mang đến phòng</label>
+      <select id="room"></select>
+    </div>
+    <div>
+      <label for="user">Người thao tác</label>
+      <input type="text" id="user" placeholder="Tên của bạn" autocomplete="name">
+    </div>
+    <div class="full">
+      <label for="note">Ghi chú (tùy chọn)</label>
+      <input type="text" id="note" placeholder="VD: livestream ca tối">
+    </div>
+  </div>
+
+  <div id="scanBox"><div id="reader"></div></div>
+  <button class="btn" id="camBtn" onclick="toggleCam()">Bật camera quét</button>
+  <button class="btn ghost" onclick="document.getElementById('photoIn').click()">Chụp ảnh mã QR (dự phòng)</button>
+  <input type="file" id="photoIn" accept="image/*" capture="environment" hidden onchange="onPhoto(this)">
+
+  <div class="manual">
+    <input type="text" id="manual" placeholder="Hoặc nhập / quét bằng súng: AP200X-01" autocapitalize="characters">
+    <button class="btn" onclick="manualSubmit()">Ghi</button>
+  </div>
+
+  <div id="flash" role="status" aria-live="polite"><span>Chọn chế độ, rồi quét mã QR trên thiết bị.</span></div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab on" id="tScans" onclick="showTab('scans')" role="tab">Vừa quét</button>
+    <button class="tab" id="tOut" onclick="showTab('out')" role="tab">Đang ngoài kho<span class="count" id="outCount">0</span></button>
+  </div>
+  <div class="list" id="list"></div>
+
+  <button class="link" onclick="askToken(true)">Đổi mã truy cập</button>
+</div>
+
+<script>
+/* ====== CẤU HÌNH: dán link /exec của Apps Script vào đây ====== */
+const API = 'https://script.google.com/macros/s/AKfycbzaHw3wO4OU5SkEdMNQQqNO0sq2T7CGj-6lG0toS0gGIE9hfBsvzK5gWsuwkAik7c2_/exec';
+
+let mode = 'RA', scanner = null, camOn = false;
+let lastCode = '', lastTime = 0;
+const recent = [];
+
+/* ---------- gọi API (text/plain để tránh preflight CORS) ---------- */
+function getToken(){ return safeGet('token') || ''; }
+function askToken(force){
+  const cur = getToken();
+  if (cur && !force) return cur;
+  const t = prompt('Nhập mã truy cập kho:', cur || '');
+  if (t !== null) safeSet('token', t.trim());
+  return getToken();
+}
+function call(fn, payload){
+  return fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn: fn, payload: payload || null, token: getToken() })
+  }).then(r => r.json()).then(res => {
+    if (res && res.auth) { askToken(true); throw new Error('Sai mã truy cập. Nhập lại rồi thử lại.'); }
+    return res;
+  });
+}
+
+/* ---------- khởi động ---------- */
+window.addEventListener('load', () => {
+  askToken(false);
+  call('getRooms').then(rooms => {
+    if (!Array.isArray(rooms)) rooms = ['Khác'];
+    const sel = document.getElementById('room');
+    sel.innerHTML = rooms.map(r => `<option>${esc(r)}</option>`).join('');
+    const saved = safeGet('room'); if (saved) sel.value = saved;
+  }).catch(e => flash('err', 'Không tải được danh sách phòng', String(e.message || e)));
+  document.getElementById('user').value = safeGet('user') || '';
+  document.getElementById('user').addEventListener('change', e => safeSet('user', e.target.value));
+  document.getElementById('room').addEventListener('change', e => safeSet('room', e.target.value));
+  document.getElementById('manual').addEventListener('keydown', e => { if (e.key === 'Enter') manualSubmit(); });
+  refreshOut();
+  renderList();
+  startCam();            // tự bật camera khi mở trang
+});
+
+function safeGet(k){ try{return localStorage.getItem('kho_'+k)}catch(e){return null} }
+function safeSet(k,v){ try{localStorage.setItem('kho_'+k,v)}catch(e){} }
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- chế độ ---------- */
+function setMode(m){
+  mode = m;
+  document.getElementById('mOut').classList.toggle('on', m === 'RA');
+  document.getElementById('mIn').classList.toggle('on', m === 'VAO');
+  document.getElementById('roomBox').style.visibility = m === 'RA' ? 'visible' : 'hidden';
+}
+
+/* ---------- camera quét liên tục ---------- */
+function startCam(){
+  const btn = document.getElementById('camBtn');
+  scanner = scanner || new Html5Qrcode('reader');
+  return scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 230, height: 230 } }, onCode, () => {})
+    .then(() => { camOn = true; btn.textContent = 'Tắt camera'; })
+    .catch(err => {
+      camOn = false; btn.textContent = 'Bật camera quét';
+      flash('err', 'Không bật được camera', 'Hãy cho phép quyền camera cho trang này (cần HTTPS), hoặc dùng "Chụp ảnh mã QR" / nhập tay.');
+    });
+}
+function toggleCam(){
+  const btn = document.getElementById('camBtn');
+  if (camOn) {
+    scanner.stop().then(() => { camOn = false; btn.textContent = 'Bật camera quét'; });
+  } else {
+    startCam();
+  }
+}
+
+/* ---------- chụp ảnh QR (dự phòng) ---------- */
+function onPhoto(input){
+  const file = input.files && input.files[0];
+  if (!file) return;
+  flash('', 'Đang đọc mã QR…', '');
+  scanner = scanner || new Html5Qrcode('reader');
+  scanner.scanFile(file, false)
+    .then(text => submit(text))
+    .catch(() => { beep(false); flash('err', 'Không đọc được mã QR', 'Chụp lại gần hơn, đủ sáng, QR nằm giữa khung ảnh.'); })
+    .finally(() => { input.value = ''; });
+}
+
+function onCode(text){
+  const now = Date.now();
+  if (text === lastCode && now - lastTime < 3000) return;   // chống quét lặp
+  lastCode = text; lastTime = now;
+  submit(text);
+}
+
+function manualSubmit(){
+  const el = document.getElementById('manual');
+  const v = el.value.trim();
+  if (!v) return;
+  el.value = '';
+  submit(v);
+  el.focus();
+}
+
+/* ---------- gửi lên server ---------- */
+function submit(code){
+  const payload = {
+    id: code, action: mode,
+    room: document.getElementById('room').value,
+    user: document.getElementById('user').value.trim(),
+    note: document.getElementById('note').value.trim()
+  };
+  if (!payload.user) { beep(false); flash('err', 'Chưa nhập tên', 'Nhập tên người thao tác rồi quét lại.'); return; }
+  flash('', 'Đang ghi ' + code + '…', '');
+  call('scanItem', payload)
+    .then(res => {
+      if (!res.ok) { beep(false); flash('err', res.msg, ''); return; }
+      beep(true);
+      const cls = res.action === 'VÀO KHO' ? 'ok-in' : 'ok-out';
+      const dest = res.action === 'VÀO KHO' ? 'Đã nhập kho' : 'Đã chuyển đến phòng ' + res.where;
+      flash(cls, res.name + ' (' + res.id + ')', dest, res.warn);
+      recent.unshift({ id: res.id, name: res.name, action: res.action, where: res.where, t: new Date() });
+      if (recent.length > 30) recent.pop();
+      renderList(); refreshOut();
+    })
+    .catch(e => { beep(false); flash('err', 'Lỗi kết nối', String(e.message || e)); });
+}
+
+function flash(cls, title, sub, warn){
+  const f = document.getElementById('flash');
+  f.className = cls;
+  f.innerHTML = '<b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span>' + (warn ? '<span class="warn">' + esc(warn) + '</span>' : '');
+}
+
+function beep(ok){
+  try { navigator.vibrate && navigator.vibrate(ok ? 80 : [120,60,120]); } catch(e){}
+  try {
+    const a = new (window.AudioContext || window.webkitAudioContext)();
+    const o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = ok ? 880 : 220; o.connect(g); g.connect(a.destination);
+    g.gain.value = 0.08; o.start(); setTimeout(() => { o.stop(); a.close(); }, ok ? 110 : 260);
+  } catch(e){}
+}
+
+/* ---------- danh sách ---------- */
+let tab = 'scans', outItems = [];
+function showTab(t){
+  tab = t;
+  document.getElementById('tScans').classList.toggle('on', t === 'scans');
+  document.getElementById('tOut').classList.toggle('on', t === 'out');
+  renderList();
+}
+function refreshOut(){
+  call('getOutItems').then(items => {
+    outItems = Array.isArray(items) ? items : [];
+    document.getElementById('outCount').textContent = outItems.length;
+    if (tab === 'out') renderList();
+  }).catch(() => {});
+}
+function renderList(){
+  const el = document.getElementById('list');
+  if (tab === 'scans') {
+    if (!recent.length) { el.innerHTML = '<div class="empty">Chưa có thiết bị nào được quét trong phiên này.</div>'; return; }
+    el.innerHTML = recent.map(r =>
+      `<div class="item"><div><b>${esc(r.name)}</b><small>${esc(r.id)} · ${r.t.toLocaleTimeString('vi-VN')}</small></div>
+       <span class="tag ${r.action === 'VÀO KHO' ? 'in' : 'out'}">${r.action === 'VÀO KHO' ? 'Vào kho' : 'Phòng ' + esc(r.where)}</span></div>`).join('');
+  } else {
+    if (!outItems.length) { el.innerHTML = '<div class="empty">Không có thiết bị nào đang ở ngoài kho.</div>'; return; }
+    let html = '', cur = null;
+    outItems.forEach(i => {
+      if (i.room !== cur) { cur = i.room; html += `<div class="group">Phòng ${esc(cur)}</div>`; }
+      html += `<div class="item"><div><b>${esc(i.name)}</b><small>${esc(i.id)} · ${esc(i.time)} · ${esc(i.user)}</small></div></div>`;
+    });
+    el.innerHTML = html;
+  }
+}
+</script>
+</body>
+</html>
