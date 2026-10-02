@@ -23,12 +23,17 @@
   .mode{border:2px solid var(--line);background:var(--card);border-radius:10px;padding:14px 8px;font:inherit;font-weight:800;font-size:17px;color:var(--muted);cursor:pointer}
   .mode.out.on{background:var(--out);border-color:var(--out);color:#fff}
   .mode.in.on{background:var(--in);border-color:var(--in);color:#fff}
-  .mode:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible{outline:3px solid #1b5fd6;outline-offset:2px}
+  .mode:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible,.qbtn:focus-visible{outline:3px solid #1b5fd6;outline-offset:2px}
 
   .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
   label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
-  select,input[type=text]{width:100%;padding:11px 10px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
+  select,input[type=text],input[type=number]{width:100%;padding:11px 10px;border:1.5px solid var(--line);border-radius:8px;font:inherit;background:#fff;color:var(--ink)}
   .full{grid-column:1/-1}
+
+  .qty{display:grid;grid-template-columns:52px 1fr 52px;gap:8px}
+  .qbtn{border:1.5px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-size:22px;font-weight:800;cursor:pointer;color:var(--ink)}
+  .qty input{text-align:center;font-size:18px;font-weight:800}
+  .qhint{font-size:12px;color:var(--muted);margin-top:4px}
 
   #scanBox{margin-top:12px;background:#000;border-radius:12px;overflow:hidden;min-height:60px;position:relative}
   #reader{width:100%}
@@ -40,11 +45,11 @@
 
   #flash{margin-top:12px;padding:14px;border-radius:10px;border-left:8px solid var(--line);background:var(--card);min-height:70px}
   #flash b{font-size:17px;display:block}
-  #flash span{color:var(--muted);font-size:14px}
+  #flash span{color:var(--muted);font-size:14px;display:block}
   #flash.ok-out{background:var(--out-soft);border-color:var(--out)}
   #flash.ok-in{background:var(--in-soft);border-color:var(--in)}
   #flash.err{background:var(--bad-soft);border-color:var(--bad)}
-  #flash .warn{color:#8a4b00;font-weight:600;display:block;margin-top:4px}
+  #flash .warn{color:#8a4b00;font-weight:600;margin-top:4px}
 
   .tabs{display:grid;grid-template-columns:1fr 1fr;margin-top:20px;border-bottom:2px solid var(--line)}
   .tab{padding:10px;text-align:center;font:inherit;font-weight:700;background:none;border:0;color:var(--muted);cursor:pointer;border-bottom:4px solid transparent;margin-bottom:-2px}
@@ -82,6 +87,15 @@
       <input type="text" id="user" placeholder="Tên của bạn" autocomplete="name">
     </div>
     <div class="full">
+      <label for="qty">Số lượng (cùng loại)</label>
+      <div class="qty">
+        <button class="qbtn" type="button" onclick="stepQty(-1)" aria-label="Giảm">−</button>
+        <input type="number" id="qty" value="1" min="1" max="50" inputmode="numeric">
+        <button class="qbtn" type="button" onclick="stepQty(1)" aria-label="Tăng">+</button>
+      </div>
+      <div class="qhint">Nhập 3 rồi quét 1 cái: hệ thống tự lấy thêm 2 cái cùng loại. Sau mỗi lần quét sẽ về 1.</div>
+    </div>
+    <div class="full">
       <label for="note">Ghi chú (tùy chọn)</label>
       <input type="text" id="note" placeholder="VD: livestream ca tối">
     </div>
@@ -116,6 +130,16 @@ let mode = 'RA', scanner = null, camOn = false;
 let lastCode = '', lastTime = 0;
 const recent = [];
 
+/* Danh sách phòng dự phòng khi không tải được từ server */
+function defaultRooms(){
+  const r = ['S1','S2','S3'];
+  for (let i = 102; i <= 126; i++) r.push(String(i));
+  for (let i = 201; i <= 212; i++) r.push(String(i));
+  r.push('Khác');
+  return r;
+}
+let roomsFromServer = false;
+
 /* ---------- gọi API (text/plain để tránh preflight CORS) ---------- */
 function getToken(){ return safeGet('token') || ''; }
 function askToken(force){
@@ -136,18 +160,34 @@ function call(fn, payload){
   });
 }
 
+/* ---------- phòng ---------- */
+function fillRooms(rooms){
+  const sel = document.getElementById('room');
+  const keep = sel.value || safeGet('room');
+  sel.innerHTML = rooms.map(r => `<option value="${esc(r)}">${esc(r)}</option>`).join('');
+  if (keep && rooms.indexOf(keep) > -1) sel.value = keep;
+}
+function loadRooms(){
+  return call('getRooms').then(rooms => {
+    if (!Array.isArray(rooms) || !rooms.length) throw new Error('Danh sách phòng rỗng');
+    roomsFromServer = true;
+    fillRooms(rooms);
+  }).catch(e => {
+    roomsFromServer = false;
+    if (!document.getElementById('room').options.length) fillRooms(defaultRooms());
+  });
+}
+
 /* ---------- khởi động ---------- */
 window.addEventListener('load', () => {
   askToken(false);
-  call('getRooms').then(rooms => {
-    if (!Array.isArray(rooms)) rooms = ['Khác'];
-    const sel = document.getElementById('room');
-    sel.innerHTML = rooms.map(r => `<option>${esc(r)}</option>`).join('');
-    const saved = safeGet('room'); if (saved) sel.value = saved;
-  }).catch(e => flash('err', 'Không tải được danh sách phòng', String(e.message || e)));
+  fillRooms(defaultRooms());            // có sẵn ngay, không phụ thuộc mạng
+  loadRooms();                          // rồi thay bằng danh sách thật nếu tải được
+  const room = document.getElementById('room');
+  room.addEventListener('pointerdown', () => { if (!roomsFromServer) loadRooms(); });
+  room.addEventListener('change', e => safeSet('room', e.target.value));
   document.getElementById('user').value = safeGet('user') || '';
   document.getElementById('user').addEventListener('change', e => safeSet('user', e.target.value));
-  document.getElementById('room').addEventListener('change', e => safeSet('room', e.target.value));
   document.getElementById('manual').addEventListener('keydown', e => { if (e.key === 'Enter') manualSubmit(); });
   refreshOut();
   renderList();
@@ -157,6 +197,15 @@ window.addEventListener('load', () => {
 function safeGet(k){ try{return localStorage.getItem('kho_'+k)}catch(e){return null} }
 function safeSet(k,v){ try{localStorage.setItem('kho_'+k,v)}catch(e){} }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- số lượng ---------- */
+function getQty(){
+  const n = parseInt(document.getElementById('qty').value, 10);
+  return isNaN(n) || n < 1 ? 1 : Math.min(n, 50);
+}
+function stepQty(d){
+  document.getElementById('qty').value = Math.max(1, Math.min(50, getQty() + d));
+}
 
 /* ---------- chế độ ---------- */
 function setMode(m){
@@ -198,8 +247,10 @@ function onPhoto(input){
     .finally(() => { input.value = ''; });
 }
 
+let busy = false;
 function onCode(text){
   const now = Date.now();
+  if (busy) return;                                          // đang xử lý lần quét trước
   if (text === lastCode && now - lastTime < 3000) return;   // chống quét lặp
   lastCode = text; lastTime = now;
   submit(text);
@@ -220,28 +271,40 @@ function submit(code){
     id: code, action: mode,
     room: document.getElementById('room').value,
     user: document.getElementById('user').value.trim(),
-    note: document.getElementById('note').value.trim()
+    note: document.getElementById('note').value.trim(),
+    qty: getQty()
   };
   if (!payload.user) { beep(false); flash('err', 'Chưa nhập tên', 'Nhập tên người thao tác rồi quét lại.'); return; }
-  flash('', 'Đang ghi ' + code + '…', '');
+  if (mode === 'RA' && !payload.room) { beep(false); flash('err', 'Chưa chọn phòng', 'Chọn phòng đến rồi quét lại.'); return; }
+  busy = true;
+  flash('', 'Đang ghi ' + code + (payload.qty > 1 ? ' × ' + payload.qty : '') + '…', '');
   call('scanItem', payload)
     .then(res => {
       if (!res.ok) { beep(false); flash('err', res.msg, ''); return; }
       beep(true);
-      const cls = res.action === 'VÀO KHO' ? 'ok-in' : 'ok-out';
-      const dest = res.action === 'VÀO KHO' ? 'Đã nhập kho' : 'Đã chuyển đến phòng ' + res.where;
-      flash(cls, res.name + ' (' + res.id + ')', dest, res.warn);
-      recent.unshift({ id: res.id, name: res.name, action: res.action, where: res.where, t: new Date() });
-      if (recent.length > 30) recent.pop();
+      const isIn = res.action === 'VÀO KHO';
+      const cls = isIn ? 'ok-in' : 'ok-out';
+      const n = res.count || 1;
+      const dest = (isIn ? 'Đã nhập kho' : 'Đã chuyển đến phòng ' + res.where) + (n > 1 ? ' – ' + n + ' cái' : '');
+      const title = res.name + (n > 1 ? ' × ' + n : ' (' + res.id + ')');
+      const idsLine = n > 1 && res.ids ? res.ids.join(', ') : '';
+      flash(cls, title, dest + (idsLine ? '\n' + idsLine : ''), res.warn);
+      (res.ids && res.ids.length ? res.ids : [res.id]).forEach(rid => {
+        recent.unshift({ id: rid, name: res.name, action: res.action, where: res.where, t: new Date() });
+      });
+      while (recent.length > 40) recent.pop();
+      document.getElementById('qty').value = 1;
       renderList(); refreshOut();
     })
-    .catch(e => { beep(false); flash('err', 'Lỗi kết nối', String(e.message || e)); });
+    .catch(e => { beep(false); flash('err', 'Lỗi kết nối', String(e.message || e)); })
+    .finally(() => { busy = false; });
 }
 
 function flash(cls, title, sub, warn){
   const f = document.getElementById('flash');
   f.className = cls;
-  f.innerHTML = '<b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span>' + (warn ? '<span class="warn">' + esc(warn) + '</span>' : '');
+  const subHtml = esc(sub || '').replace(/\n/g, '<br>');
+  f.innerHTML = '<b>' + esc(title) + '</b><span>' + subHtml + '</span>' + (warn ? '<span class="warn">' + esc(warn) + '</span>' : '');
 }
 
 function beep(ok){
